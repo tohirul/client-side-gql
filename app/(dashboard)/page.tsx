@@ -17,13 +17,62 @@ import {
 } from '@nextui-org/react'
 import { PlusIcon } from 'lucide-react'
 import Issue from '../_components/Issue'
+import { issuesQuery } from '@/gql/issues_query'
+import { createIssueMutation } from '@/gql/create_issue_mutation'
+import { deleteIssueMutation } from '@/gql/delete_issue_mutation'
+interface Issue {
+  id: string
+  name: string
+  content: string
+  status: string
+}
 
 const IssuesPage = () => {
   const { isOpen, onOpen, onOpenChange } = useDisclosure()
   const [issueName, setIssueName] = useState('')
   const [issueDescription, setIssueDescription] = useState('')
+  const [{ data: deleteData, error: deleteError }, deleteIssue] =
+    useMutation(deleteIssueMutation)
 
-  const onCreate = async (close) => {}
+  const [{ data, error, fetching }, query_replay] = useQuery({
+    query: issuesQuery,
+  })
+
+  const [createIssue_result, createIssue] = useMutation(createIssueMutation)
+
+  const onCreate = async (close: Function) => {
+    const result = await createIssue({
+      input: {
+        name: issueName,
+        content: issueDescription,
+      },
+    })
+    if (result?.data) {
+      setIssueName('')
+      setIssueDescription('')
+      query_replay()
+      close()
+    }
+  }
+
+  const fn_deleteIssue = async (issueId: string) => {
+    console.log('delete', issueId)
+    try {
+      const result = await deleteIssue({ deleteIssueId: issueId })
+
+      if (result.error) {
+        console.error('Error deleting issue:', result.error.message)
+        return
+      }
+
+      console.log('Issue deleted successfully:', result.data)
+
+      // Refetch issues explicitly
+      query_replay({ requestPolicy: 'network-only' })
+    } catch (err) {
+      console.error('Unexpected error deleting issue:', err)
+    }
+  }
 
   return (
     <div>
@@ -37,12 +86,25 @@ const IssuesPage = () => {
           </button>
         </Tooltip>
       </PageHeader>
-
-      {[].map((issue) => (
-        <div key={issue.id}>
+      {fetching ? (
+        <div className="flex justify-center items-center">
+          <Spinner size="lg" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-4">
+          {data &&
+            data?.issues?.map((issue: Issue) => (
+              <div key={issue?.id}>
+                <Issue issue={issue} fn_deleteIssue={fn_deleteIssue} />
+              </div>
+            ))}
+        </div>
+      )}
+      {/* {([] as { id: string }[]).map((issue) => (
+        <div key={issue?.id}>
           <Issue issue={issue} />
         </div>
-      ))}
+      ))} */}
 
       <Modal
         size="2xl"
@@ -85,7 +147,7 @@ const IssuesPage = () => {
                 </div>
               </ModalBody>
               <ModalFooter className="border-t">
-                <Button variant="ghost" onPress={() => onOpenChange(false)}>
+                <Button variant="ghost" onPress={onOpenChange}>
                   Cancel
                 </Button>
                 <Button
